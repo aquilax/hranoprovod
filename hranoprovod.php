@@ -11,9 +11,56 @@ class Hranoprovod{
 		$this->loadDatabase($database);
   	}
 
+	private function sum_merge($a1, $a2, $coef = 1){
+		$o = array();
+		foreach($a1 as $k => $v){
+			if (isset($o[$k])){
+				$o[$k] += $v * $coef;
+			} else {
+				$o[$k] = $v * $coef;
+			}
+		}
+		foreach($a2 as $k => $v){
+			if (isset($o[$k])){
+				$o[$k] += $v * 1;
+			} else {
+				$o[$k] = $v * 1;
+			}
+		}
+		return $o;
+	}
+
+	private function resolve_node($name, $level){
+		if ($level > 10){
+			return;
+		}
+		if (!isset($this->db[$name])){
+			return;
+		}
+		$tc = array();
+		foreach($this->db[$name] as $n => $v){
+			$this->resolve_node($n, $level+1);
+			if (isset($this->db[$n])){
+				$tc = $this->sum_merge($this->db[$n], $tc, $v);
+			} else {
+				$tc = $this->sum_merge($tc, array($n => $v));
+			}
+	
+		}
+		$this->db[$name] = $tc;
+	}
+
+	private function resolve(){
+		foreach($this->db as $name => $cont){
+			$this->resolve_node($name, 0);
+		}
+	}
+
+
 	private function loadDatabase($database){
 		$raw_db = Spyc::YAMLLoad($database);
 		$this->db = $this->processDatabase($raw_db);
+		$this->resolve();
 	}
 
 	private function processDatabase($raw){
@@ -50,22 +97,15 @@ class Hranoprovod{
 				if ($db_row){
 					list($qty, $measure) = $this->parseQty($raw_qty);
 					$coef = 1;
-					if ($measure){
-						if (isset($db_row['!m'])){
-							$coef = $this->getCoef($db_row['!m'], $measure);
-						}
-					}
 					$elements = array();
 					foreach($db_row as $rname => $rqty){
 						if ($rname[0] != '!'){
-							if ($coef){
-								$elements[$rname] = $rqty * $qty * $coef;
-							} else {
-								$elements[$rname] = ($rqty * $qty).' ?'.$measure;
-							}
+							$elements[$rname] = $rqty * $qty * $coef;
 						}
 					}
 					$olog[$date][][$name] = $elements;
+				} else {
+					$olog[$date][][$name] = array($name => $raw_qty);
 				}
 			}
 		}
@@ -100,7 +140,7 @@ class Hranoprovod{
 		foreach($acc as $date => $elements){
 			echo $date.":\n";
 			foreach($elements as $name => $qty){
-				echo "\t".$name.': '.$qty."\n";
+				echo "\t".$name.': '.round($qty, 2)."\n";
 			}
 		}
 	}
