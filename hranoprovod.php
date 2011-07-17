@@ -42,6 +42,9 @@ class Hranoprovod{
 	private function processLog($log){
 		$olog = array();
 		foreach($log as $date => $rows){
+			if ($date == '~'){
+				//get daily
+			}
 			foreach($rows as $name => $raw_qty){
 				$db_row = $this->getDbRow(trim($name));
 				if ($db_row){
