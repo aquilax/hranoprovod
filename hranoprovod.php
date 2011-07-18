@@ -11,6 +11,7 @@ class HP_Options{
   var $long_names = array(
     'bal',
     'reg',
+    'diff',
   );
   
   var $options = array();
@@ -21,7 +22,11 @@ class HP_Options{
   
   function get($name, $default = FALSE){
     if (isset($this->options[$name])){
-      return $this->options[$name];
+      if ($this->options[$name]){
+        return $this->options[$name];
+      } else {
+        return TRUE;
+      }
     }
     return $default;
   }
@@ -204,7 +209,17 @@ class Hranoprovod{
           foreach ($contents as $ename => $eqty){
             if (!isset($acc[$date][$ename])) $acc[$date][$ename] = 0;
             if (is_numeric($eqty)){
-              $acc[$date][$ename] += $eqty;
+              if ($this->conf->get('diff') !== FALSE){
+                if (!isset($acc[$date][$ename]['+'])) $acc[$date][$ename] = array('+' => 0, '-' => 0);
+                //group by sign
+                if ($eqty < 0){
+                  $acc[$date][$ename]['-'] += $eqty;
+                } else {
+                  $acc[$date][$ename]['+'] += $eqty;
+                }
+              } else {
+                $acc[$date][$ename] += $eqty;
+              }
             }
           }
         }
@@ -213,7 +228,23 @@ class Hranoprovod{
     foreach($acc as $date => $elements){
       echo $date.":\n";
       foreach($elements as $name => $qty){
-        echo "\t".$name.': '.round($qty, 2)."\n";
+        if (is_array($qty)){
+          echo "\t".$name.":\n";
+            $c = 0;
+            foreach($qty as $t => $v){
+              if (round($v, 2)) {
+                echo "\t\t".sprintf('%10.2f', round($v, 2))."\n";
+                $c++;
+              }
+            }
+            if ($c > 1){
+              $diff = $qty['+'] + $qty['-'];
+              echo "\t\t".str_repeat('-', 11)."\n";
+              echo "\t\t".sprintf('%10.2f', $diff)."\n";
+            }
+        } else {
+          echo "\t".$name.': '.round($qty, 2)."\n";
+        }
       }
     }
   }
