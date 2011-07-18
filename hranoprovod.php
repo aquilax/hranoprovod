@@ -51,16 +51,12 @@ class HP_Parser{
     return $result;
   }
 }
-class Hranoprovod{
+
+class HR_Resolver{
+
+  private $db;
   
-  private $db = array();
-  private $log = array();
-
-  function __construct($database){
-    $this->loadDatabase($database);
-    }
-
-  private function sum_merge($a1, $a2, $coef = 1){
+  public static function sum_merge($a1, $a2, $coef = 1){
     $o = array();
     foreach($a1 as $k => $v){
       if (isset($o[$k])){
@@ -99,17 +95,30 @@ class Hranoprovod{
     $this->db[$name] = $tc;
   }
 
-  private function resolve(){
+  public function resolve($db){
+    $this->db = $db;
     foreach($this->db as $name => $cont){
       $this->resolve_node($name, 0);
     }
+    return $this->db;
   }
+}
 
+class Hranoprovod{
+  
+  private $db = array();
+  private $log = array();
+
+  function __construct($database){
+    $this->loadDatabase($database);
+  }
 
   private function loadDatabase($database){
     $raw_db = HP_Parser::LoadFile($database);
     $this->db = $this->processDatabase($raw_db);
-    $this->resolve();
+    $resolver = new HR_Resolver();
+    $this->db = $resolver->resolve($this->db);
+    unset($resolver);
   }
 
   private function processDatabase($raw){
@@ -138,13 +147,10 @@ class Hranoprovod{
   private function processLog($log){
     $olog = array();
     foreach($log as $date => $rows){
-      if ($date == '~'){
-        //get daily
-      }
       foreach($rows as $name => $raw_qty){
         $db_row = $this->getDbRow(trim($name));
         if ($db_row){
-          list($qty, $measure) = $this->parseQty($raw_qty);
+          $qty = $this->parseQty($raw_qty);
           $coef = 1;
           $elements = array();
           foreach($db_row as $rname => $rqty){
@@ -163,12 +169,7 @@ class Hranoprovod{
   }
 
   private function parseQty($raw_qty){
-    if (preg_match('/([\d\.\-\+]+)\s+(.+)/', $raw_qty, $m)){
-      return array($m[1], $m[2]);
-    }
-    if (preg_match('/([\d\.\-\+]+)/', $raw_qty, $m)){
-      return array($m[1], '');
-    }
+    return floatval(trim($raw_qty));
   }
 
   public function printOutput(){
