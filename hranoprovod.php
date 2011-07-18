@@ -1,13 +1,39 @@
 #!/usr/bin/env php
 <?php
 
+class HP_Options{
+
+  var $short_names = array(
+    'f:',
+    'd:',
+  );
+  
+  var $long_names = array(
+    'bal',
+    'reg',
+  );
+  
+  var $options = array();
+  
+  public function __construct($argv){
+    $this->options = getopt(implode($this->short_names), $this->long_names);
+  }
+  
+  function get($name, $default = FALSE){
+    if (isset($this->options[$name])){
+      return $this->options[$name];
+    }
+    return $default;
+  }
+}
+
 class HP_Parser{
 
   const ending = ':';
 
   public static function LoadFile($file_name){
     if (!file_exists($file_name)){
-      die('File not found');
+      die("File not found: $file_name\n");
     }
     $f = fopen($file_name, 'r');
     $result = array();
@@ -106,10 +132,13 @@ class HR_Resolver{
 
 class Hranoprovod{
   
+  private $conf = null;
   private $db = array();
   private $log = array();
 
-  function __construct($database){
+  function __construct($argv){
+    $this->conf = new HP_Options($argv);
+    $database = $this->conf->get('d');
     $this->loadDatabase($database);
   }
 
@@ -125,21 +154,15 @@ class Hranoprovod{
     return $raw;
   }
 
-  public function loadLog($log){
-    $raw_log = HP_Parser::LoadFile($log);
+  public function loadLog(){
+    $log_file = $this->conf->get('f');
+    $raw_log = HP_Parser::LoadFile($log_file);
     $log = $this->processLog($raw_log);
   }
 
   private function getDbRow($name){
     if (isset($this->db[$name])){
       return $this->db[$name];
-    }
-    return FALSE;
-  }
-
-  private function getCoef($coef, $name){
-    if (isset($coef[$name])){
-      return $coef[$name];
     }
     return FALSE;
   }
@@ -196,9 +219,7 @@ class Hranoprovod{
   }
 }
 
-$database = 'food.yaml';
-$log = 'log.yaml';
 
-$h = new Hranoprovod($database);
-$h->loadLog($log);
+$h = new Hranoprovod($argv);
+$h->loadLog();
 $h->printOutput();
