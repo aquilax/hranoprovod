@@ -57,12 +57,12 @@ class HP_Parser{
             $v = substr($line, $pos);
             if (isset($elements[$k])){
               $elements[$k] += $v;
+            } else {
+              $elements[$k] = $v;
             }
-            $elements[$k] = $v;
           } else {
             die('Wrong format');
           }
-
         } else {
           if ($parent){
             //add to result
