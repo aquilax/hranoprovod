@@ -14,10 +14,14 @@ class HP_Options{
     'diff',
   );
   
-  var $options = array();
+  //$options holds the default values
+  var $options = array(
+    'f' => 'log.yaml',
+    'd' => 'food.yaml',
+  );
   
   public function __construct($argv){
-    $this->options = getopt(implode($this->short_names), $this->long_names);
+    $this->options = array_merge(getopt(implode($this->short_names), $this->long_names), $this->options);
   }
   
   function get($name, $default = FALSE){
