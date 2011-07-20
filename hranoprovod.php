@@ -1,5 +1,7 @@
 #!/usr/bin/env php
 <?php
+/* Set internal character encoding to UTF-8 */
+mb_internal_encoding("UTF-8");
 
 class HP_Options{
 
@@ -87,6 +89,24 @@ class HP_Parser{
   }
 }
 
+class HP_Accumulator{
+  
+  public $list = array();
+  
+  public function add($name, $value){
+    $sign = ($value<0)?'-':'+';
+    if (isset($this->list[$name][$sign])){
+      $this->list[$name][$sign] += $value;
+    } else {
+      $this->list[$name][$sign] = $value;
+    }
+  }
+  
+  public function clear(){
+    $this->list = array();
+  }
+}
+
 class HR_Resolver{
 
   private $db;
@@ -139,20 +159,137 @@ class HR_Resolver{
   }
 }
 
-class Hranoprovod{
+class HP_Output{
   
+  /*
+   * mb_str_pad from http://php.net/manual/en/ref.mbstring.php#90611
+   */
+  private static function mb_str_pad($input, $pad_length, $pad_string, $pad_style = STR_PAD_RIGHT) { 
+    return str_pad($input, strlen($input)-mb_strlen($input)+$pad_length, $pad_string, $pad_style); 
+  } 
+    
+  private static function printDate($date){
+    print date('Y/d/m', $date).":\n";
+  }
+  
+  private static function printTrack($track){
+    print "\t--".self::mb_str_pad($track, 69, '-')."\n";
+  }
+  
+  private static function printElement($element, $pvalues){
+    $el_name = self::mb_str_pad($element, 37, ' ', STR_PAD_LEFT);
+    printf(" %s | %10.2f | %10.2f |=%10.2f |\n", $el_name, $pvalues['+'], $pvalues['-'], $pvalues['=']);
+  }
+  
+  private static function getValues($values){
+    $p = (isset($values['+']))?$values['+']:0;
+    $m = (isset($values['-']))?$values['-']:0;
+    return array(
+      '+' => $p,
+      '-' => $m,
+      '=' => $p+$m,
+    );
+  }
+  
+  public static function outputTable($log){
+    $acc = new HP_Accumulator();
+    foreach ($log as $date => $rows){
+      self::printDate($date);
+      foreach($rows as $track => $elements){
+        self::printTrack($track);
+        foreach($elements as $element => $values){
+          $pvalues = self::getValues($values);
+          self::printElement($element, $pvalues);
+          $acc->add($element, $pvalues['=']);
+        }
+      }
+      // Show accumulated values;
+      if ($acc->list){
+        self::printTrack('TOTAL');
+        foreach($acc->list as $element => $values){
+          $pvalues = self::getValues($values);
+          self::printElement($element, $pvalues);
+        }
+        $acc->clear();
+      }
+    }
+  }
+}
+
+class HP_Processor{
+  
+  const errorChar = '# ';
+  
+  private $db;
+  
+  public function __construct(&$db){
+    $this->db = $db;
+  }
+  
+  private function getDbRow($name){
+    if (isset($this->db[$name])){
+      return $this->db[$name];
+    }
+    return FALSE;
+  }
+
+  private function parseDate($date){
+    $d = strtotime($date);
+    if ($d > 0){
+      return $d;
+    } else {
+      return self::errorChar.$date;
+    }
+  }
+  
+  private function parseQty($raw_qty){
+    return floatval(trim($raw_qty));
+  }  
+  
+  public function processLog(&$log){
+    $olog = array();
+    foreach($log as $date => $rows){
+      $ts = $this->parseDate($date);
+      foreach($rows as $name => $raw_qty){
+        $db_row = $this->getDbRow(trim($name));
+        if ($db_row){
+          $qty = $this->parseQty($raw_qty);
+          $coef = 1;
+          $elements = array();
+          foreach($db_row as $rname => $rqty){
+            $q = $rqty * $qty * $coef;
+            $sign = ($q<0)?'-':'+';
+            $elements[$rname][$sign] = $q;
+          }
+          $olog[$ts][$name] = $elements;
+        } else {
+          $sign = ($raw_qty<0)?'-':'+';
+          $olog[$ts][$name] = array($name => array($sign =>$raw_qty));
+        }
+      }
+    }
+    return $olog;
+  }
+}
+
+class Hranoprovod{
+
   private $conf = null;
   private $db = array();
   private $log = array();
 
   function __construct($argv){
     $this->conf = new HP_Options($argv);
-    $database = $this->conf->get('d');
-    $this->loadDatabase($database);
+    $database_file = $this->conf->get('d');
+    $this->loadDatabase($database_file);
+    
+    $log_file = $this->conf->get('f');
+    $this->loadLog($log_file);
+    HP_Output::outputTable($this->log);
   }
 
-  private function loadDatabase($database){
-    $raw_db = HP_Parser::LoadFile($database);
+  private function loadDatabase($database_file){
+    $raw_db = HP_Parser::LoadFile($database_file);
     $this->db = $this->processDatabase($raw_db);
     $resolver = new HR_Resolver();
     $this->db = $resolver->resolve($this->db);
@@ -163,98 +300,12 @@ class Hranoprovod{
     return $raw;
   }
 
-  public function loadLog(){
-    $log_file = $this->conf->get('f');
+  public function loadLog($log_file){
     $raw_log = HP_Parser::LoadFile($log_file);
-    $log = $this->processLog($raw_log);
-  }
-
-  private function getDbRow($name){
-    if (isset($this->db[$name])){
-      return $this->db[$name];
-    }
-    return FALSE;
-  }
-
-  private function processLog($log){
-    $olog = array();
-    foreach($log as $date => $rows){
-      foreach($rows as $name => $raw_qty){
-        $db_row = $this->getDbRow(trim($name));
-        if ($db_row){
-          $qty = $this->parseQty($raw_qty);
-          $coef = 1;
-          $elements = array();
-          foreach($db_row as $rname => $rqty){
-            if ($rname[0] != '!'){
-              $elements[$rname] = $rqty * $qty * $coef;
-            }
-          }
-          $olog[$date][][$name] = $elements;
-        } else {
-          $olog[$date][][$name] = array($name => $raw_qty);
-        }
-      }
-    }
-    $this->log = $olog;
-    unset($olog);
-  }
-
-  private function parseQty($raw_qty){
-    return floatval(trim($raw_qty));
-  }
-
-  public function printOutput(){
-    $acc = array();
-    foreach ($this->log as $date => $rows){
-      foreach ($rows as $elements){
-        foreach ($elements as $name => $contents){
-          if (!isset($acc[$date])) $acc[$date] = array();
-          foreach ($contents as $ename => $eqty){
-            if (!isset($acc[$date][$ename])) $acc[$date][$ename] = 0;
-            if (is_numeric($eqty)){
-              if ($this->conf->get('diff') !== FALSE){
-                if (!isset($acc[$date][$ename]['+'])) $acc[$date][$ename] = array('+' => 0, '-' => 0);
-                //group by sign
-                if ($eqty < 0){
-                  $acc[$date][$ename]['-'] += $eqty;
-                } else {
-                  $acc[$date][$ename]['+'] += $eqty;
-                }
-              } else {
-                $acc[$date][$ename] += $eqty;
-              }
-            }
-          }
-        }
-      }
-    }
-    foreach($acc as $date => $elements){
-      echo $date.":\n";
-      foreach($elements as $name => $qty){
-        if (is_array($qty)){
-          echo "\t".$name.":\n";
-            $c = 0;
-            foreach($qty as $t => $v){
-              if (round($v, 2)) {
-                echo "\t\t".sprintf('%10.2f', round($v, 2))."\n";
-                $c++;
-              }
-            }
-            if ($c > 1){
-              $diff = $qty['+'] + $qty['-'];
-              echo "\t\t".str_repeat('-', 11)."\n";
-              echo "\t\t".sprintf('%10.2f', $diff)."\n";
-            }
-        } else {
-          echo "\t".$name.': '.round($qty, 2)."\n";
-        }
-      }
-    }
-  }
+    $processor = new HP_Processor($this->db);
+    $this->log = $processor->processLog($raw_log);
+    unset($processor);
+  }  
 }
 
-
 $h = new Hranoprovod($argv);
-$h->loadLog();
-$h->printOutput();
