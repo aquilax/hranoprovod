@@ -6,14 +6,11 @@ mb_internal_encoding("UTF-8");
 class HP_Options{
 
   var $short_names = array(
-    'f:',
-    'd:',
+    'f:', // log file name
+    'd:', // database file name
   );
   
   var $long_names = array(
-    'bal',
-    'reg',
-    'diff',
   );
   
   //$options holds the default values
@@ -42,7 +39,7 @@ class HP_Parser{
 
   const ending = ':';
 
-  public static function LoadFile($file_name){
+  public static function LoadFile($file_name, $callback_function = FALSE){
     if (!file_exists($file_name)){
       die("File not found: $file_name\n");
     }
@@ -72,7 +69,11 @@ class HP_Parser{
         } else {
           if ($parent){
             //add to result
-            $result[$parent] = $elements;
+            if (is_callable($callback_function)){
+              call_user_func($callback_function, $parent, $elements);
+            } else {
+              $result[$parent] = $elements;
+            }
             //reset
             $parent = FALSE;
             $elements = array();
@@ -82,7 +83,11 @@ class HP_Parser{
       }
     }
     if ($parent && $elements){
-      $result[$parent] = $elements;
+      if (is_callable($callback_function)){
+        call_user_func($callback_function, $parent, $elements);
+      } else {
+        $result[$parent] = $elements;
+      }
     }
     fclose($f);
     return $result;
@@ -233,7 +238,7 @@ class HP_Processor{
     return FALSE;
   }
 
-  private function parseDate($date){
+  public function parseDate($date){
     $d = strtotime($date);
     if ($d > 0){
       return $d;
@@ -246,27 +251,33 @@ class HP_Processor{
     return floatval(trim($raw_qty));
   }  
   
+  public function processNode($rows){
+    $olog = array();
+    foreach($rows as $name => $raw_qty){
+      $db_row = $this->getDbRow(trim($name));
+      if ($db_row){
+        $qty = $this->parseQty($raw_qty);
+        $coef = 1;
+        $elements = array();
+        foreach($db_row as $rname => $rqty){
+          $q = $rqty * $qty * $coef;
+          $sign = ($q<0)?'-':'+';
+          $elements[$rname][$sign] = $q;
+        }
+        $olog[$name] = $elements;
+      } else {
+        $sign = ($raw_qty<0)?'-':'+';
+        $olog[$name] = array($name => array($sign =>$raw_qty));
+      }
+    }
+    return $olog;
+  }
+  
   public function processLog(&$log){
     $olog = array();
     foreach($log as $date => $rows){
       $ts = $this->parseDate($date);
-      foreach($rows as $name => $raw_qty){
-        $db_row = $this->getDbRow(trim($name));
-        if ($db_row){
-          $qty = $this->parseQty($raw_qty);
-          $coef = 1;
-          $elements = array();
-          foreach($db_row as $rname => $rqty){
-            $q = $rqty * $qty * $coef;
-            $sign = ($q<0)?'-':'+';
-            $elements[$rname][$sign] = $q;
-          }
-          $olog[$ts][$name] = $elements;
-        } else {
-          $sign = ($raw_qty<0)?'-':'+';
-          $olog[$ts][$name] = array($name => array($sign =>$raw_qty));
-        }
-      }
+      $olog[$ts] = $this->processNode($rows);
     }
     return $olog;
   }
@@ -278,6 +289,15 @@ class Hranoprovod{
   private $db = array();
   private $log = array();
 
+  /*
+   * callback function for log processing
+   */
+  public function addToLog($name, $elements){
+    $new_name = $this->processor->parseDate($name);
+    $new_elements = $this->processor->processNode($elements);
+    $this->log[$new_name] = $new_elements;
+  }  
+  
   function __construct($argv){
     $this->conf = new HP_Options($argv);
     $database_file = $this->conf->get('d');
@@ -301,9 +321,8 @@ class Hranoprovod{
   }
 
   public function loadLog($log_file){
-    $raw_log = HP_Parser::LoadFile($log_file);
-    $processor = new HP_Processor($this->db);
-    $this->log = $processor->processLog($raw_log);
+    $this->processor = new HP_Processor($this->db);
+    HP_Parser::LoadFile($log_file, array($this, 'addToLog'));
     unset($processor);
   }  
 }
