@@ -11,6 +11,7 @@ class HP_Options{
   );
   
   var $long_names = array(
+    'single:'
   );
   
   //$options holds the default values
@@ -173,8 +174,8 @@ class HP_Output{
     return str_pad($input, strlen($input)-mb_strlen($input)+$pad_length, $pad_string, $pad_style); 
   } 
     
-  private static function printDate($date){
-    print date('Y/d/m', $date).":\n";
+  private static function printDate($date, $nl = "\n"){
+    print date('Y/d/m', $date).":".$nl;
   }
   
   private static function printTrack($track){
@@ -216,6 +217,26 @@ class HP_Output{
           self::printElement($element, $pvalues);
         }
         $acc->clear();
+      }
+    }
+  }
+  
+  public static function outputSingle($log, $single){
+    $value = array();
+    foreach ($log as $date => $rows){
+      foreach($rows as $track => $elements){
+        foreach($elements as $element => $values){
+          if ($element == $single){
+            $pvalues = self::getValues($values);
+            $value = HR_Resolver::sum_merge($value, $pvalues, 1);
+          }
+        }
+      }
+      if ($value){
+        self::printDate($date, '');
+        $pvalues = self::getValues($value);
+        self::printElement($single, $pvalues);
+        $value = array();
       }
     }
   }
@@ -288,15 +309,6 @@ class Hranoprovod{
   private $conf = null;
   private $db = array();
   private $log = array();
-
-  /*
-   * callback function for log processing
-   */
-  public function addToLog($name, $elements){
-    $new_name = $this->processor->parseDate($name);
-    $new_elements = $this->processor->processNode($elements);
-    $this->log[$new_name] = $new_elements;
-  }  
   
   function __construct($argv){
     $this->conf = new HP_Options($argv);
@@ -305,6 +317,11 @@ class Hranoprovod{
     
     $log_file = $this->conf->get('f');
     $this->loadLog($log_file);
+    $single = $this->conf->get('single');
+    if ($single){
+      HP_Output::outputSingle($this->log, $single);
+      return;
+    }
     HP_Output::outputTable($this->log);
   }
 
@@ -320,6 +337,16 @@ class Hranoprovod{
     return $raw;
   }
 
+  /*
+   * callback function for log processing
+   */
+  public function addToLog($name, $elements){
+    $new_name = $this->processor->parseDate($name);
+    $new_elements = $this->processor->processNode($elements);
+    $this->log[$new_name] = $new_elements;
+  }  
+  
+  
   public function loadLog($log_file){
     $this->processor = new HP_Processor($this->db);
     HP_Parser::LoadFile($log_file, array($this, 'addToLog'));
