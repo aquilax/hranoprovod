@@ -7,25 +7,27 @@ import (
   "bufio"
   "strings"
   "strconv"
+  "container/vector" 
 )
-
-var db = [...]Node{}[:]
 
 type Node struct{
   name string
   elements map[string] float32
 }
 
-func mytrim(s string) string{
+type NodeList struct{
+  items vector.Vector
+}
+
+func Mytrim(s string) string{
   return strings.Trim(s, "\t :\n");
 }
 
-func addNode(node Node){
-  fmt.Println(node)
-  db = append(db, node);
+func (db *NodeList) Push(node Node){
+  db.items.Push(node)
 }
 
-func parseFile(file_name string){
+func (db *NodeList) ParseFile(file_name string){
   f, err := os.Open(file_name);
   if (err != nil) {
     log.Print(err)
@@ -51,15 +53,15 @@ func parseFile(file_name string){
     //new nodes start at the beginning of the line
     if(line[0] != 32 && line[0] != 8){
       if node.name != ""{
-        addNode(node)
+        db.Push(node)
       }
       node.name = strings.TrimRight(line, "\t\n\r ")
       continue
     } 
     separator := strings.LastIndexAny(line, "\t ")
 
-    ename := mytrim(line[0:separator])
-    enum, err := strconv.Atof32(mytrim(line[separator:]))
+    ename := Mytrim(line[0:separator])
+    enum, err := strconv.Atof32(Mytrim(line[separator:]))
 
     if err != nil{
       log.Println(err)
@@ -68,12 +70,14 @@ func parseFile(file_name string){
     node.elements[ename] = enum;
   }
   if (node.name != ""){
-    addNode(node);
+    db.Push(node);
   }
   f.Close();
 }
 
 
 func main(){
-  parseFile("food.yaml")
+  var db NodeList
+  db.ParseFile("food.yaml")
+  fmt.Print(db);
 }
