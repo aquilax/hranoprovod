@@ -4,4 +4,4 @@ TARG=hranoprovod
 GOFILES=\
   hranoprovod.go\
 
-  include $(GOROOT)/src/Make.pkg
+include $(GOROOT)/src/Make.pkg
