@@ -1,15 +1,13 @@
 package main
 
 import (
-  "container/vector" 
 )
 
+type Elements map[string] float32
 
 type Node struct{
   name string
-  elements map[string] float32
+  elements Elements
 }
 
-type NodeList struct{
-  items vector.Vector
-}
+type NodeList map[string] Node

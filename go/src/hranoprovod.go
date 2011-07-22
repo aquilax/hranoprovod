@@ -1,11 +1,16 @@
 package main
 
 import (
-  "fmt"
+//  "fmt"
 )
 
 func main(){
-  var db NodeList
+  var db = make(NodeList)
   db.ParseFile("food.yaml")
-  fmt.Print(db);
+  db.Resolve();
+//  fmt.Print(db)
+
+  var log = make(NodeList)
+  log.ParseFile("log.yaml")
+//  fmt.Print(log)
 }

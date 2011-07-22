@@ -13,7 +13,7 @@ func Mytrim(s string) string{
 }
 
 func (db *NodeList) Push(node Node){
-  db.items.Push(node)
+  (*db)[node.name] = node;
 }
 
 func (db *NodeList) ParseFile(file_name string){
@@ -25,7 +25,7 @@ func (db *NodeList) ParseFile(file_name string){
   input := bufio.NewReader(f)
 
   var node Node
-  node.elements = make(map[string] float32)
+  node.elements = make(Elements)
 
   for {
     line, err := input.ReadString(10)
